@@ -3,7 +3,9 @@ from __future__ import unicode_literals
 
 import time
 from datetime import datetime
+from datetime import time as datetimetime
 
+from dateutil.relativedelta import relativedelta
 from django.test import TestCase
 from django.utils import timezone
 
@@ -72,6 +74,51 @@ class DecoratorsTest(TestCase):
         self.assertEqual(
             HueyExecutionLog.task_to_string(_zero_division), log.code
         )
+
+    def test_run_at_times(self):
+        class VariableToggle:
+            runned = False
+
+        @HueyExecutionLog.run_at_times(
+            hours=[datetime.now().time()], minutes_tolerance=1
+        )
+        @HueyExecutionLog.register_log
+        def toggle_variable(klass):
+            klass.runned = True
+
+        toggle_variable(VariableToggle)
+        self.assertTrue(VariableToggle.runned)
+
+        VariableToggle.runned = False
+
+        @HueyExecutionLog.run_at_times(
+            hours=[(datetime.now() + relativedelta(hours=1)).time()],
+            minutes_tolerance=15,
+        )
+        @HueyExecutionLog.register_log
+        def toggle_variable(klass):
+            klass.runned = True
+
+        time.sleep(3)
+        toggle_variable(VariableToggle)
+        self.assertFalse(VariableToggle.runned)
+
+        HueyExecutionLog.objects.all().delete()
+        VariableToggle.runned = False
+
+        @HueyExecutionLog.run_at_times(
+            hours=[datetime.now().time()], minutes_tolerance=15
+        )
+        @HueyExecutionLog.register_log
+        def toggle_variable(klass):
+            klass.runned = True
+
+        toggle_variable(VariableToggle)
+        self.assertTrue(VariableToggle.runned)
+        VariableToggle.runned = False
+        # trying run it again. it must not run because it already do it
+        toggle_variable(VariableToggle)
+        self.assertFalse(VariableToggle.runned)
 
     def test_max_tries_decorator(self):
         # we must decorate the task with register_log before

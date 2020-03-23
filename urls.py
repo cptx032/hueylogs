@@ -6,4 +6,5 @@ This helps the tests remain isolated.
 
 from typing import Any, List
 
-urlpatterns: List[Any] = []
+# urlpatterns: List[Any] = []
+urlpatterns = []  # type: List[Any]

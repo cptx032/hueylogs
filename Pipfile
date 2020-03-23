@@ -8,11 +8,13 @@ black = "*"
 mypy = "*"
 isort = "*"
 coverage = "*"
+ipython = "*"
+ipdb = "*"
 
 [packages]
 huey = "*"
 django = "*"
-black = "==19.10b0"
+python-dateutil = "*"
 
 [requires]
 python_version = "3.6"

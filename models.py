@@ -1,10 +1,16 @@
 # coding: utf-8
 from __future__ import print_function, unicode_literals
 
+import calendar
+from datetime import datetime
+from datetime import time as datetimetime
+from datetime import timedelta
+
+from dateutil.relativedelta import relativedelta
 from django.db import models
 from django.utils import timezone
 from huey import crontab
-from huey.contrib.djhuey import periodic_task
+from huey.contrib.djhuey import db_periodic_task
 
 from hueylogs.exceptions import HueyMaxTriesException
 
@@ -29,6 +35,29 @@ class HueyExecutionLog(models.Model):
     #     print("CLEANING")
 
     @classmethod
+    def logs(cls, hours, minutes_tolerance=15, max_tries=3, try_again_delay=5):
+        """Concentrate all decorators in only one decorator.
+
+        Not that have no need to decorate the function with huey decorators.
+        """
+
+        def _decorator(func):
+            run_at_times_decorator = HueyExecutionLog.run_at_times(
+                hours=hours, minutes_tolerance=minutes_tolerance
+            )
+            max_tries_decorator = HueyExecutionLog.max_tries(
+                max_tries=max_tries, try_again_delay=try_again_delay
+            )
+            db_periodic_task_decorator = db_periodic_task(lambda dt: True)
+            return db_periodic_task_decorator(
+                run_at_times_decorator(
+                    max_tries_decorator(HueyExecutionLog.register_log(func))
+                )
+            )
+
+        return _decorator
+
+    @classmethod
     def _reached_max_tries(cls, code, max_tries):
         failed_tries = HueyExecutionLog.objects.filter(code=code).order_by(
             "-start_time"
@@ -39,6 +68,122 @@ class HueyExecutionLog(models.Model):
             not i for i in failed_tries.values_list("is_success", flat=True)
         ]
         return all(fails)
+
+    @classmethod
+    def check_incompatible_hours(cls, hours, minutes_tolerance):
+        """True if a hour is less than 'minutes_tolerance' of another."""
+        _times_copy = list(hours)
+        while len(_times_copy):
+            hour_to_check = _times_copy.pop()
+            for remaining_hour in _times_copy:
+                now = datetime.now()
+                dt_a = datetime.combine(now, remaining_hour)
+                dt_b = datetime.combine(now, hour_to_check)
+                delta_minutes = abs((dt_a - dt_b).total_seconds()) / 60.0
+                if delta_minutes <= minutes_tolerance:
+                    raise ValueError(
+                        "Is not possible have hours with less than {} minutes "
+                        "of distance. Incompatible hours: {} and {}".format(
+                            delta_minutes, dt_a, dt_b
+                        )
+                    )
+
+    @classmethod
+    def utc_to_local(cls, utc_dt):
+        """Convert datetime with tzinfo to local hour without tzinfo.
+
+        Source: https://stackoverflow.com/a/13287083
+        """
+        # get integer timestamp to avoid precision lost
+        timestamp = calendar.timegm(utc_dt.timetuple())
+        local_dt = datetime.fromtimestamp(timestamp)
+        assert utc_dt.resolution >= timedelta(microseconds=1)
+        return local_dt.replace(microsecond=utc_dt.microsecond)
+
+    @classmethod
+    def its_time(cls, hour, now, minutes_tolerance):
+        """Return True if its time.
+
+        Will be the time if the hour of 'now' is equal or in range defined
+        by 'minutes_tolerance'. The 'minutes_tolerance' argument only works
+        from 'hour' to foward, not backwards.
+
+        Arguments:
+            - hour: datetime.time, with time to be sent
+            - now: datetime.datetime, now date
+            - minutes_tolerance: int, how many minutes will be tolerated AFTER
+        """
+        # removing time zone data
+        if now.tzinfo:
+            now = HueyExecutionLog.utc_to_local(now)
+        hour = datetimetime(hour.hour, hour.minute)
+        assert isinstance(hour, datetimetime), "hour is not datetime.time"
+        assert isinstance(now, datetime), "now is not datetime.datetime"
+
+        # removing seconds info
+        now = datetime.combine(now.date(), datetimetime(now.hour, now.minute))
+        start = datetime(now.year, now.month, now.day, hour.hour, hour.minute)
+        end = datetime(
+            now.year, now.month, now.day, hour.hour, hour.minute
+        ) + relativedelta(minutes=minutes_tolerance)
+        return (now >= start) and (now <= end)
+
+    @classmethod
+    def run_at_times(self, hours, minutes_tolerance=15):
+        """Make sure that the task will be runned only in some hours.
+
+        Note that if 'hours' must have a minimum distance of 'minutes_tolerance'
+        minutes.
+
+        Arguments:
+            - hours: a list of datetime.time
+            - minutes_tolerance: if the task manager delay to run your function
+                you can force the execution of it setting minutes_tolerance
+                so if the task manager not run the task exactly in 00:00
+                but a little bit after, you can execute it still
+        """
+        HueyExecutionLog.check_incompatible_hours(hours, minutes_tolerance)
+
+        def _decorator(func):
+            if not getattr(func, "register_log_called", None):
+                raise AttributeError(
+                    "The function '{}' must have been decorated "
+                    "with 'register_log'".format(
+                        HueyExecutionLog.task_to_string(func)
+                    )
+                )
+
+            def _inner_function(*args, **kwargs):
+                now = datetime.now()
+                hour = None
+                for i in hours:
+                    if HueyExecutionLog.its_time(i, now, minutes_tolerance):
+                        hour = i
+                        break
+                if hour is None:
+                    return
+                # verifying if the function was already called
+                last_execution = (
+                    HueyExecutionLog.objects.filter(
+                        code=HueyExecutionLog.task_to_string(func)
+                    )
+                    .order_by("-start_time")
+                    .first()
+                )
+                if last_execution:
+                    already_runned = HueyExecutionLog.its_time(
+                        hour, last_execution.start_time, minutes_tolerance
+                    )
+                    if already_runned:
+                        return
+                return func(*args, **kwargs)
+
+            _inner_function.__module__ = func.__module__
+            _inner_function.__name__ = func.__name__
+            _inner_function.register_log_called = True
+            return _inner_function
+
+        return _decorator
 
     @classmethod
     def max_tries(cls, max_tries, try_again_delay):
