@@ -5,4 +5,4 @@ from django.apps import AppConfig
 
 
 class HueylogsConfig(AppConfig):
-    name = 'hueylogs'
+    name = "hueylogs"
