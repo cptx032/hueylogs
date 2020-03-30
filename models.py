@@ -5,6 +5,8 @@ import calendar
 from datetime import datetime
 from datetime import time as datetimetime
 from datetime import timedelta
+import sys
+import traceback
 
 from dateutil.relativedelta import relativedelta
 from django.db import models
@@ -20,6 +22,7 @@ class HueyExecutionLog(models.Model):
     start_time = models.DateTimeField(db_index=True)
     end_time = models.DateTimeField(db_index=True)
     is_success = models.BooleanField(default=False)
+    error_description = models.TextField(blank=True)
 
     def __str__(self):
         return self.code
@@ -266,12 +269,23 @@ class HueyExecutionLog(models.Model):
                     is_success=True,
                 )
                 return result
-            except Exception:
+            except:
+                class DummyFile:
+                    def __init__(self):
+                        self.value = u""
+
+                    def write(self, value):
+                        self.value += value + u"\n"
+
+                t, v, trace = sys.exc_info()
+                dummy_file = DummyFile()
+                traceback.print_exception(t, v, trace, file=dummy_file)
                 HueyExecutionLog.objects.create(
                     code=HueyExecutionLog.task_to_string(func),
                     start_time=start_time,
                     end_time=timezone.now(),
                     is_success=False,
+                    error_description=dummy_file.value
                 )
                 raise
 
