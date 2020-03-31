@@ -2,17 +2,17 @@
 from __future__ import print_function, unicode_literals
 
 import calendar
+import sys
+import traceback
 from datetime import datetime
 from datetime import time as datetimetime
 from datetime import timedelta
-import sys
-import traceback
 
 from dateutil.relativedelta import relativedelta
 from django.db import models
 from django.utils import timezone
 from huey import crontab
-from huey.contrib.djhuey import db_periodic_task
+from huey.contrib.djhuey import db_periodic_task, lock_task
 
 from hueylogs.exceptions import HueyMaxTriesException
 
@@ -38,7 +38,14 @@ class HueyExecutionLog(models.Model):
     #     print("CLEANING")
 
     @classmethod
-    def logs(cls, hours, minutes_tolerance=15, max_tries=3, try_again_delay=5):
+    def logs(
+        cls,
+        hours,
+        minutes_tolerance=15,
+        max_tries=3,
+        try_again_delay=5,
+        lock=True,
+    ):
         """Concentrate all decorators in only one decorator.
 
         Not that have no need to decorate the function with huey decorators.
@@ -52,9 +59,18 @@ class HueyExecutionLog(models.Model):
                 max_tries=max_tries, try_again_delay=try_again_delay
             )
             db_periodic_task_decorator = db_periodic_task(lambda dt: True)
+            lock_task_decorator = lambda func: func
+            if lock:
+                lock_task_decorator = lock_task(
+                    HueyExecutionLog.task_to_string(func)
+                )
             return db_periodic_task_decorator(
-                run_at_times_decorator(
-                    max_tries_decorator(HueyExecutionLog.register_log(func))
+                lock_task_decorator(
+                    run_at_times_decorator(
+                        max_tries_decorator(
+                            HueyExecutionLog.register_log(func)
+                        )
+                    )
                 )
             )
 
@@ -270,12 +286,13 @@ class HueyExecutionLog(models.Model):
                 )
                 return result
             except:
+
                 class DummyFile:
                     def __init__(self):
-                        self.value = u""
+                        self.value = ""
 
                     def write(self, value):
-                        self.value += value + u"\n"
+                        self.value += value + "\n"
 
                 t, v, trace = sys.exc_info()
                 dummy_file = DummyFile()
@@ -285,7 +302,7 @@ class HueyExecutionLog(models.Model):
                     start_time=start_time,
                     end_time=timezone.now(),
                     is_success=False,
-                    error_description=dummy_file.value
+                    error_description=dummy_file.value,
                 )
                 raise
 
