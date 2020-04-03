@@ -181,10 +181,13 @@ class HueyExecutionLog(models.Model):
                         break
                 if hour is None:
                     return
-                # verifying if the function was already called
+                # verifying if the function was already called today
                 last_execution = (
                     HueyExecutionLog.objects.filter(
-                        code=HueyExecutionLog.task_to_string(func)
+                        code=HueyExecutionLog.task_to_string(func),
+                        start_time__day=now.day,
+                        start_time__month=now.month,
+                        start_time__year=now.year
                     )
                     .order_by("-start_time")
                     .first()
