@@ -13,6 +13,7 @@ from django.db import models
 from django.utils import timezone
 from huey import crontab
 from huey.contrib.djhuey import db_periodic_task, lock_task
+from six import text_type as unicode
 
 from hueylogs.exceptions import HueyMaxTriesException
 
@@ -187,7 +188,7 @@ class HueyExecutionLog(models.Model):
                         code=HueyExecutionLog.task_to_string(func),
                         start_time__day=now.day,
                         start_time__month=now.month,
-                        start_time__year=now.year
+                        start_time__year=now.year,
                     )
                     .order_by("-start_time")
                     .first()
@@ -295,6 +296,8 @@ class HueyExecutionLog(models.Model):
                         self.value = ""
 
                     def write(self, value):
+                        if type(value) is not unicode:
+                            value = value.decode("utf-8")
                         self.value += value + "\n"
 
                 t, v, trace = sys.exc_info()
