@@ -2,6 +2,7 @@
 from __future__ import print_function, unicode_literals
 
 import calendar
+import logging
 import sys
 import traceback
 from datetime import datetime
@@ -16,6 +17,8 @@ from huey.contrib.djhuey import db_periodic_task, lock_task
 from six import text_type as unicode
 
 from hueylogs.exceptions import HueyMaxTriesException
+
+logger = logging.getLogger("hueylogs")
 
 
 class HueyExecutionLog(models.Model):
@@ -289,7 +292,7 @@ class HueyExecutionLog(models.Model):
                     is_success=True,
                 )
                 return result
-            except:
+            except Exception as e:
 
                 class DummyFile:
                     def __init__(self):
@@ -310,6 +313,7 @@ class HueyExecutionLog(models.Model):
                     is_success=False,
                     error_description=dummy_file.value,
                 )
+                logger.error(e)
                 raise
 
         # changing the name of returned function because huey uses it
