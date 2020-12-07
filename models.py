@@ -27,6 +27,7 @@ class HueyExecutionLog(models.Model):
     end_time = models.DateTimeField(db_index=True)
     is_success = models.BooleanField(default=False)
     error_description = models.TextField(blank=True)
+    finnished = models.NullBooleanField(default=None)
 
     def __str__(self):
         return self.code
@@ -35,11 +36,6 @@ class HueyExecutionLog(models.Model):
     def task_to_string(cls, task_class):
         """Return the string representation of a function."""
         return "{}.{}".format(task_class.__module__, task_class.__name__)
-
-    # @classmethod # fixme
-    # @periodic_task(crontab(hour="10", minute="52"))
-    # def clean_old_records(cls):
-    #     print("CLEANING")
 
     @classmethod
     def logs(
@@ -283,14 +279,19 @@ class HueyExecutionLog(models.Model):
 
         def _inner_function(*args, **kwargs):
             start_time = timezone.now()
+            log_instance = HueyExecutionLog.objects.create(
+                code=HueyExecutionLog.task_to_string(func),
+                start_time=start_time,
+                end_time=start_time,
+                finnished=False,
+                is_success=False,
+            )
             try:
                 result = func(*args, **kwargs)
-                HueyExecutionLog.objects.create(
-                    code=HueyExecutionLog.task_to_string(func),
-                    start_time=start_time,
-                    end_time=timezone.now(),
-                    is_success=True,
-                )
+                log_instance.finnished = True
+                log_instance.end_time = timezone.now()
+                log_instance.is_success = True
+                log_instance.save()
                 return result
             except Exception as e:
 
@@ -306,13 +307,11 @@ class HueyExecutionLog(models.Model):
                 t, v, trace = sys.exc_info()
                 dummy_file = DummyFile()
                 traceback.print_exception(t, v, trace, file=dummy_file)
-                HueyExecutionLog.objects.create(
-                    code=HueyExecutionLog.task_to_string(func),
-                    start_time=start_time,
-                    end_time=timezone.now(),
-                    is_success=False,
-                    error_description=dummy_file.value,
-                )
+                log_instance.is_success = False
+                log_instance.finnished = True
+                log_instance.end_time = timezone.now()
+                log_instance.error_description = dummy_file.value
+                log_instance.save()
                 logger.error(e)
                 raise
 
