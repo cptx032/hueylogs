@@ -28,8 +28,18 @@ I've created hueylogs because I have missed the logs that [django cron](https://
 I start this project when all my personal/professional projects start using huey as the backgroung task manager.
 Because of that, I will probably update this project every time a project mine need some feature. But feel encouraged to contribute to my little project as well :D
 
-## Who
-Me o_o (twitter.com/cptx032) a newbie pixelart artist
-
 ## API
-WIP
+Is possible to verify huey logs by requesting the endpoint `hueylogs/` once you use DRF with Django.
+
+To Enable the API you must go to your project settings and configure:
+
+```python
+from django.conf import settings
+from django.conf.urls import include, url
+
+if "hueylogs" in settings.INSTALLED_APPS:
+    urlpatterns.append(url(r'^api/', include('hueylogs.urls')))
+```
+
+
+In the example above the endpoint is prefixed with `/api/`, so in your browser you must navigate to `http://localhost:8000/api/hueylogs/`.

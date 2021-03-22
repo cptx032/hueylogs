@@ -64,7 +64,11 @@ settings.configure(
     INSTALLED_APPS=ALWAYS_INSTALLED_APPS + CUSTOM_INSTALLED_APPS,
     MIDDLEWARE_CLASSES=ALWAYS_MIDDLEWARE_CLASSES,
     ROOT_URLCONF="hueylogs.urls",
-    DATABASES={"default": {"ENGINE": "django.db.backends.sqlite3",}},
+    DATABASES={
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+        }
+    },
     LANGUAGE_CODE="en-us",
     TIME_ZONE="UTC",
     USE_I18N=True,

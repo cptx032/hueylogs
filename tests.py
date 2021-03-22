@@ -3,7 +3,6 @@ from __future__ import unicode_literals
 
 import time
 from datetime import datetime
-from datetime import time as datetimetime
 
 from dateutil.relativedelta import relativedelta
 from django.test import TestCase
