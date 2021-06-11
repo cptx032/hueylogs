@@ -27,7 +27,7 @@ class HueyExecutionLog(models.Model):
     end_time = models.DateTimeField(db_index=True)
     is_success = models.BooleanField(default=False)
     error_description = models.TextField(blank=True)
-    finnished = models.NullBooleanField(default=None)
+    finnished = models.BooleanField(default=None, null=True)
 
     def __str__(self):
         return self.code
